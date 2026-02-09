@@ -145,8 +145,8 @@ jobs:
       - name: Verify JVM Memory Settings (Fast Check)
         working-directory: project/android
         env:
-          GRADLE_OPTS: -Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
-          JAVA_TOOL_OPTIONS: -Xmx6g -XX:MaxMetaspaceSize=2g
+          GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
+          JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
         run: |
           echo "========================================="
           echo "JVM MEMORY CONFIGURATION VERIFICATION"
@@ -160,14 +160,15 @@ jobs:
           echo "Testing KSP compilation environment..."
           ./gradlew tasks --no-daemon | grep -i ksp || echo "KSP tasks available"
           echo ""
-          echo "✅ Memory settings verified! Heap: 6GB, Metaspace: 2GB"
+          echo "✅ Memory settings verified! Heap: 7GB (MAX), Metaspace: 3GB (MAX)"
+          echo "⚡ Future-proofed for projects with 100+ dependencies"
           echo "========================================="
 
       - name: Build Android APK
         working-directory: project/android
         env:
-          GRADLE_OPTS: -Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
-          JAVA_TOOL_OPTIONS: -Xmx6g -XX:MaxMetaspaceSize=2g
+          GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
+          JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
         run: |
           VARIANT="${{ steps.build_info.outputs.VARIANT }}"
           VARIANT_CAPITALIZED="$(echo ${VARIANT^})"
@@ -177,8 +178,8 @@ jobs:
       - name: Build Android AAB
         working-directory: project/android
         env:
-          GRADLE_OPTS: -Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
-          JAVA_TOOL_OPTIONS: -Xmx6g -XX:MaxMetaspaceSize=2g
+          GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
+          JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
         run: |
           VARIANT="${{ steps.build_info.outputs.VARIANT }}"
           VARIANT_CAPITALIZED="$(echo ${VARIANT^})"

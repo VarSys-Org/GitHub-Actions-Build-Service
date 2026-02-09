@@ -44,8 +44,8 @@ Write-Host "📝 Configuring Gradle memory settings..." -ForegroundColor Yellow
 
 $gradlePropsPath = "android\gradle.properties"
 $gradlePropsContent = @"
-# Gradle JVM Memory Settings (Applied for KSP OOM Fix)
-org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
+# Gradle JVM Memory Settings (MAXIMUM SAFE LIMITS - Future-Proofed)
+org.gradle.jvmargs=-Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
 
 # Parallel builds
 org.gradle.parallel=true
@@ -67,15 +67,15 @@ android.enableR8.fullMode=true
 "@
 
 $gradlePropsContent | Out-File -FilePath $gradlePropsPath -Encoding UTF8 -Force
-Write-Host "✅ gradle.properties updated with 6GB heap, 2GB metaspace" -ForegroundColor Green
+Write-Host "✅ gradle.properties updated with 7GB heap, 3GB metaspace (MAXIMUM)" -ForegroundColor Green
 
 # Step 4: Verify Gradle can start with these settings
 Write-Host ""
 Write-Host "🔍 Verifying Gradle memory configuration..." -ForegroundColor Yellow
 cd android
 
-$env:GRADLE_OPTS = "-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError"
-$env:JAVA_TOOL_OPTIONS = "-Xmx6g -XX:MaxMetaspaceSize=2g"
+$env:GRADLE_OPTS = "-Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError"
+$env:JAVA_TOOL_OPTIONS = "-Xmx7g -XX:MaxMetaspaceSize=3g"
 
 Write-Host "GRADLE_OPTS: $env:GRADLE_OPTS" -ForegroundColor Cyan
 Write-Host "JAVA_TOOL_OPTIONS: $env:JAVA_TOOL_OPTIONS" -ForegroundColor Cyan

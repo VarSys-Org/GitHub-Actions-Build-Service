@@ -1,8 +1,8 @@
 # Gradle Properties Template for Remote Builds
 # Copy this file to your project's android/gradle.properties
 
-# Memory allocation for Gradle daemon
-org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
+# Memory allocation for Gradle daemon (MAXIMUM SAFE LIMITS for GitHub Actions)
+org.gradle.jvmargs=-Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
 
 # Parallel builds
 org.gradle.parallel=true

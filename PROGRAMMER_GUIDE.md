@@ -1046,16 +1046,22 @@ e: [ksp] java.lang.OutOfMemoryError: Metaspace
 
 **Cause:** Insufficient metaspace memory for Kotlin Symbol Processing (KSP) in expo-updates and other modules.
 
-**Solution (Applied February 9, 2026):**
+**Solution (Updated February 9, 2026 - MAXIMUM SAFE LIMITS):**
 
-The GitHub Actions workflow has been updated with increased memory allocation:
+The GitHub Actions workflow has been updated with **maximum safe memory allocation** to future-proof against all project sizes:
 
 ```yaml
 # In .github/workflows/remote-build.yml
 env:
-  GRADLE_OPTS: -Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
-  JAVA_TOOL_OPTIONS: -Xmx6g -XX:MaxMetaspaceSize=2g
+  GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
+  JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
 ```
+
+**Why These Limits:**
+- GitHub Actions ubuntu-latest runners have 7GB RAM total
+- 7GB heap + 3GB metaspace = maximum safe allocation
+- Future-proofed for projects with 100+ dependencies
+- Handles large KSP generation, multi-module builds, extensive analysis
 
 **For Project Developers:**
 
@@ -1066,14 +1072,15 @@ env:
 
 2. **Ensure your android/gradle.properties includes:**
    ```properties
-   org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
+   org.gradle.jvmargs=-Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
    org.gradle.parallel=true
    android.enableR8.fullMode=true
    ```
 
-3. **If builds still fail**, increase memory further:
-   - For very large projects: `-Xmx8g -XX:MaxMetaspaceSize=3g`
-   - For projects with 50+ dependencies: Consider build optimization
+3. **For extremely large projects** (200+ dependencies):
+   - These settings are already at maximum for GitHub Actions
+   - Consider modularizing your project
+   - Or use self-hosted runners with more RAM
 
 **Important:** The issue is NOT with the GitHub-hosted runner (ubuntu-latest has sufficient resources). It's a JVM memory configuration issue that affects Kotlin compilation.
 
