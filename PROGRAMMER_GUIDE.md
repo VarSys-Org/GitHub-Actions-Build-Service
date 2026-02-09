@@ -1030,4 +1030,85 @@ gh run view RUN_ID --log --repo username/repo
 
 ---
 
-**Need help?** Open an issue on GitHub or check the troubleshooting section.
+**Need help?** Open an issue on GitHub or check the troubleshooting section below.
+
+---
+
+## Troubleshooting
+
+### OutOfMemoryError: Metaspace During KSP
+
+**Symptom:**
+```
+> Task :expo-updates:kspReleaseKotlin
+e: [ksp] java.lang.OutOfMemoryError: Metaspace
+```
+
+**Cause:** Insufficient metaspace memory for Kotlin Symbol Processing (KSP) in expo-updates and other modules.
+
+**Solution (Applied February 9, 2026):**
+
+The GitHub Actions workflow has been updated with increased memory allocation:
+
+```yaml
+# In .github/workflows/remote-build.yml
+env:
+  GRADLE_OPTS: -Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
+  JAVA_TOOL_OPTIONS: -Xmx6g -XX:MaxMetaspaceSize=2g
+```
+
+**For Project Developers:**
+
+1. **Copy the gradle.properties template** to your project:
+   ```bash
+   cp android-gradle.properties.template YourProject/android/gradle.properties
+   ```
+
+2. **Ensure your android/gradle.properties includes:**
+   ```properties
+   org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
+   org.gradle.parallel=true
+   android.enableR8.fullMode=true
+   ```
+
+3. **If builds still fail**, increase memory further:
+   - For very large projects: `-Xmx8g -XX:MaxMetaspaceSize=3g`
+   - For projects with 50+ dependencies: Consider build optimization
+
+**Important:** The issue is NOT with the GitHub-hosted runner (ubuntu-latest has sufficient resources). It's a JVM memory configuration issue that affects Kotlin compilation.
+
+### Build Takes Too Long (>30 minutes)
+
+**Common Causes:**
+- First build (no cache)
+- Many native dependencies
+- Complex build configurations
+
+**Solutions:**
+1. ✅ GitHub Actions caches are configured (Gradle, npm, Android SDK)
+2. Enable parallel builds in `gradle.properties` (already in template)
+3. Reduce dependencies if possible
+4. Use development builds (faster than production)
+
+### Build Succeeds Locally but Fails on GitHub Actions
+
+**Check these differences:**
+1. **Memory settings**: Local machine may have more RAM
+2. **Gradle daemon**: GitHub uses `--no-daemon` flag
+3. **Environment variables**: Ensure secrets are configured
+4. **Android SDK versions**: Check `build.gradle` matches GitHub setup-android action
+
+### APK/AAB Not Found After Build
+
+**Ensure your project has:**
+```json
+// app.json
+{
+  "expo": {
+    "android": {
+      "package": "com.yourcompany.yourapp",
+      "versionCode": 1
+    }
+  }
+}
+```

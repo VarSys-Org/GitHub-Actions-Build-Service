@@ -1,0 +1,28 @@
+# Gradle Properties Template for Remote Builds
+# Copy this file to your project's android/gradle.properties
+
+# Memory allocation for Gradle daemon
+org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError
+
+# Parallel builds
+org.gradle.parallel=true
+org.gradle.workers.max=4
+
+# Caching
+org.gradle.caching=true
+
+# AndroidX/Jetifier
+android.useAndroidX=true
+android.enableJetifier=true
+
+# KSP/Kapt optimizations
+kapt.incremental.apt=true
+kapt.use.worker.api=true
+
+# R8/Proguard
+android.enableR8.fullMode=true
+
+# Build features
+android.defaults.buildfeatures.buildconfig=true
+android.nonTransitiveRClass=false
+android.nonFinalResIds=false
