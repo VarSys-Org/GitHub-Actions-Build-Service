@@ -122,9 +122,33 @@ jobs:
           EOF
           fi
 
-      - name: Expo prebuild
+      - name: Prepare Android project (Expo or Capacitor)
         working-directory: project
-        run: npx expo prebuild --platform android --clean
+        run: |
+          echo "Detecting project type..."
+
+          if [ -f "capacitor.config.ts" ] || [ -f "capacitor.config.js" ] || [ -f "capacitor.config.json" ]; then
+            echo "Capacitor project detected"
+            if npm run | grep -q "cap:build"; then
+              npm run cap:build
+            else
+              npm run build
+              npx cap sync android
+            fi
+          elif [ -f "app.json" ] || [ -f "app.config.js" ] || [ -f "app.config.ts" ]; then
+            echo "Expo project detected"
+            npx expo prebuild --platform android --clean
+          elif [ -d "android" ]; then
+            echo "Using existing android directory"
+          else
+            echo "No supported mobile project structure found"
+            exit 1
+          fi
+
+          if [ ! -d "android" ]; then
+            echo "android directory was not generated"
+            exit 1
+          fi
 
       - name: Cache Gradle dependencies
         uses: actions/cache@v4

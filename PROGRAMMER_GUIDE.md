@@ -54,7 +54,8 @@ build-service build --profile production
 │  1. Download source (with auth headers)              │
 │  2. Extract tar.gz                                    │
 │  3. npm install                                       │
-│  4. npx expo prebuild --platform android             │
+│  4. Prepare android project (Expo prebuild OR        │
+│     Capacitor build+sync OR existing android/)       │
 │  5. ./gradlew <gradleCommand> (from eas.json)        │
 │  6. Upload APK/AAB to Appwrite                       │
 │  7. Save as GitHub Artifacts                         │
@@ -247,11 +248,20 @@ on:
        fi
    ```
 
-3. **Expo Prebuild**
+3. **Prepare Android Project (Auto-Detect)**
    ```yaml
-   - name: Expo prebuild
+   - name: Prepare Android project (Expo or Capacitor)
      working-directory: project
-     run: npx expo prebuild --platform android --clean
+     run: |
+       if [ -f "capacitor.config.ts" ] || [ -f "capacitor.config.js" ] || [ -f "capacitor.config.json" ]; then
+         npm run cap:build || (npm run build && npx cap sync android)
+       elif [ -f "app.json" ] || [ -f "app.config.js" ] || [ -f "app.config.ts" ]; then
+         npx expo prebuild --platform android --clean
+       elif [ -d "android" ]; then
+         echo "Using existing android directory"
+       else
+         exit 1
+       fi
    ```
 
 4. **Build APK/AAB**

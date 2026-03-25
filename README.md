@@ -1,6 +1,6 @@
-# 🚀 Remote Build Service for Expo/React Native Apps
+# 🚀 Remote Build Service for Expo/React Native/Capacitor Apps
 
-Build your Expo and React Native apps remotely using GitHub Actions - **unlimited and completely free!**
+Build your Expo, React Native, and Capacitor Android apps remotely using GitHub Actions - **unlimited and completely free!**
 
 ## ✨ Features
 
@@ -20,7 +20,7 @@ Before you begin, you'll need:
 1. **GitHub Account** with a repository
 2. **Appwrite Account** (free tier works perfectly)
 3. **Node.js** installed on your machine (v16 or higher)
-4. **Expo/React Native project** ready to build
+4. **Expo/React Native/Capacitor project** ready to build
 
 ## 🔧 One-Time Setup
 
@@ -103,7 +103,7 @@ Go to **Repository Settings → Secrets and variables → Actions** and ensure t
 
 ### Build Your Project
 
-Navigate to your Expo/React Native project and run:
+Navigate to your mobile project and run:
 
 ```bash
 cd /path/to/your/expo-project
