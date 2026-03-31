@@ -14,6 +14,13 @@ on:
       callback_url:
         description: 'Optional webhook URL to notify when build completes'
         required: false
+      project_type:
+        description: 'Project type: auto (default), flutter, expo, capacitor'
+        required: false
+        default: 'auto'
+      flutter_version:
+        description: 'Flutter version (e.g. 3.24.0). Leave empty for stable channel.'
+        required: false
 
 jobs:
   remote-build:
@@ -34,6 +41,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Setup Flutter (if Flutter project)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.flutter_version || github.event.client_payload.flutter_version || '' }}
+          channel: 'stable'
+          cache: true
+        if: |
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.project_type == 'flutter') ||
+          (github.event_name == 'repository_dispatch' && github.event.client_payload.project_type == 'flutter') ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.project_type == 'auto') ||
+          (github.event_name == 'repository_dispatch' && github.event.client_payload.project_type == 'auto')
+
       - name: Extract build info
         id: build_info
         run: |
@@ -43,21 +62,25 @@ jobs:
             BUILD_ID="${{ github.event.inputs.build_id }}"
             CALLBACK_URL="${{ github.event.inputs.callback_url }}"
             VARIANT="${{ github.event.inputs.variant }}"
+            PROJECT_TYPE="${{ github.event.inputs.project_type }}"
           else
             SOURCE_URL="${{ github.event.client_payload.source_url }}"
             BUILD_ID="${{ github.event.client_payload.build_id }}"
             CALLBACK_URL="${{ github.event.client_payload.callback_url }}"
             VARIANT="${{ github.event.client_payload.variant }}"
+            PROJECT_TYPE="${{ github.event.client_payload.project_type }}"
           fi
           
           # Default to release if no variant specified
           VARIANT="${VARIANT:-release}"
+          PROJECT_TYPE="${PROJECT_TYPE:-auto}"
           
           echo "SOURCE_URL=$SOURCE_URL" >> $GITHUB_OUTPUT
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_OUTPUT
           echo "CALLBACK_URL=$CALLBACK_URL" >> $GITHUB_OUTPUT
           echo "VARIANT=$VARIANT" >> $GITHUB_OUTPUT
           echo "BUILD_NUMBER=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "PROJECT_TYPE=$PROJECT_TYPE" >> $GITHUB_OUTPUT
 
       - name: Download source code
         env:
@@ -80,6 +103,7 @@ jobs:
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
+        if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         with:
           path: |
             project/node_modules
@@ -101,7 +125,10 @@ jobs:
       - name: Install dependencies
         working-directory: project
         run: |
-          if [ -f "package-lock.json" ]; then
+          if [ -f "pubspec.yaml" ]; then
+            echo "Flutter project — running flutter pub get"
+            flutter pub get
+          elif [ -f "package-lock.json" ]; then
             npm ci
           elif [ -f "yarn.lock" ]; then
             yarn install --frozen-lockfile
@@ -124,6 +151,7 @@ jobs:
 
       - name: Prepare Android project (Expo or Capacitor)
         working-directory: project
+        if: "!contains(fromJson('[\"flutter\"]'), steps.build_info.outputs.PROJECT_TYPE) && !( steps.build_info.outputs.PROJECT_TYPE == 'auto' && hashFiles('project/pubspec.yaml') != '' )"
         run: |
           echo "Detecting project type..."
 
@@ -150,6 +178,19 @@ jobs:
             exit 1
           fi
 
+      - name: Build Flutter APK
+        working-directory: project
+        if: steps.build_info.outputs.PROJECT_TYPE == 'flutter' || ( steps.build_info.outputs.PROJECT_TYPE == 'auto' && hashFiles('project/pubspec.yaml') != '' )
+        run: |
+          VARIANT="${{ steps.build_info.outputs.VARIANT }}"
+          if [ "$VARIANT" = "release" ]; then
+            flutter build apk --release --no-pub
+            flutter build appbundle --release --no-pub
+          else
+            flutter build apk --debug --no-pub
+          fi
+          echo "Flutter build complete"
+
       - name: Cache Gradle dependencies
         uses: actions/cache@v4
         with:
@@ -168,6 +209,7 @@ jobs:
 
       - name: Verify JVM Memory Settings (Fast Check)
         working-directory: project/android
+        if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         env:
           GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
           JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
@@ -190,6 +232,7 @@ jobs:
 
       - name: Build Android APK
         working-directory: project/android
+        if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         env:
           GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
           JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
@@ -201,6 +244,7 @@ jobs:
 
       - name: Build Android AAB
         working-directory: project/android
+        if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         env:
           GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
           JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
@@ -214,14 +258,20 @@ jobs:
           BUILD_ID="${{ steps.build_info.outputs.BUILD_ID }}"
           BUILD_NUM="${{ steps.build_info.outputs.BUILD_NUMBER }}"
           VARIANT="${{ steps.build_info.outputs.VARIANT }}"
+          PROJECT_TYPE="${{ steps.build_info.outputs.PROJECT_TYPE }}"
           
-          # Find and rename APK
-          APK_PATH=$(find project/android/app/build/outputs/apk/$VARIANT -name "*.apk" | head -n 1)
-          cp "$APK_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.apk"
+          if [ "$PROJECT_TYPE" = "flutter" ]; then
+            # Flutter output paths
+            APK_PATH=$(find project/build/app/outputs/apk -name "*.apk" 2>/dev/null | head -n 1)
+            AAB_PATH=$(find project/build/app/outputs/bundle -name "*.aab" 2>/dev/null | head -n 1)
+          else
+            # Expo/Capacitor/RN output paths
+            APK_PATH=$(find project/android/app/build/outputs/apk/$VARIANT -name "*.apk" | head -n 1)
+            AAB_PATH=$(find project/android/app/build/outputs/bundle/${VARIANT} -name "*.aab" | head -n 1)
+          fi
           
-          # Find and rename AAB
-          AAB_PATH=$(find project/android/app/build/outputs/bundle/${VARIANT} -name "*.aab" | head -n 1)
-          cp "$AAB_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.aab"
+          [ -n "$APK_PATH" ] && cp "$APK_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.apk"
+          [ -n "$AAB_PATH" ] && cp "$AAB_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.aab"
 
       - name: Upload to Appwrite Storage
         id: upload
