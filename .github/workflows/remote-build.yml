@@ -272,9 +272,21 @@ jobs:
             APK_PATH=$(find project/android/app/build/outputs/apk/$VARIANT -name "*.apk" | head -n 1)
             AAB_PATH=$(find project/android/app/build/outputs/bundle/${VARIANT} -name "*.aab" | head -n 1)
           fi
-          
-          [ -n "$APK_PATH" ] && cp "$APK_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.apk"
-          [ -n "$AAB_PATH" ] && cp "$AAB_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.aab"
+
+          if [ -n "$APK_PATH" ]; then
+            cp "$APK_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.apk"
+            echo "Found APK: $APK_PATH"
+          fi
+
+          if [ -n "$AAB_PATH" ]; then
+            cp "$AAB_PATH" "build-${BUILD_ID}-${BUILD_NUM}-${VARIANT}.aab"
+            echo "Found AAB: $AAB_PATH"
+          fi
+
+          if [ -z "$APK_PATH" ] && [ -z "$AAB_PATH" ]; then
+            echo "No APK or AAB artifacts were found"
+            exit 1
+          fi
 
       - name: Upload to Appwrite Storage
         id: upload
@@ -301,24 +313,38 @@ jobs:
           async function upload() {
             const apkFile = fs.readdirSync('.').find(f => f.endsWith('.apk'));
             const aabFile = fs.readdirSync('.').find(f => f.endsWith('.aab'));
-            
-            // Upload APK
-            const apkResult = await storage.createFile(
-              process.env.APPWRITE_BUCKET_ID,
-              ID.unique(),
-              InputFile.fromPath(apkFile, apkFile)
-            );
-            
-            // Upload AAB
-            const aabResult = await storage.createFile(
-              process.env.APPWRITE_BUCKET_ID,
-              ID.unique(),
-              InputFile.fromPath(aabFile, aabFile)
-            );
-            
-            console.log('APK_FILE_ID=' + apkResult.\$id);
-            console.log('AAB_FILE_ID=' + aabResult.\$id);
-            console.log('APK_URL=' + process.env.APPWRITE_ENDPOINT + '/storage/buckets/' + process.env.APPWRITE_BUCKET_ID + '/files/' + apkResult.\$id + '/view');
+
+            if (!apkFile && !aabFile) {
+              throw new Error('No APK or AAB files found for upload');
+            }
+
+            let apkResult = null;
+            let aabResult = null;
+
+            if (apkFile) {
+              apkResult = await storage.createFile(
+                process.env.APPWRITE_BUCKET_ID,
+                ID.unique(),
+                InputFile.fromPath(apkFile, apkFile)
+              );
+            }
+
+            if (aabFile) {
+              aabResult = await storage.createFile(
+                process.env.APPWRITE_BUCKET_ID,
+                ID.unique(),
+                InputFile.fromPath(aabFile, aabFile)
+              );
+            }
+
+            console.log('APK_FILE_ID=' + (apkResult ? apkResult.$id : ''));
+            console.log('AAB_FILE_ID=' + (aabResult ? aabResult.$id : ''));
+            console.log('APK_URL=' + (apkResult
+              ? process.env.APPWRITE_ENDPOINT + '/storage/buckets/' + process.env.APPWRITE_BUCKET_ID + '/files/' + apkResult.$id + '/view'
+              : ''));
+            console.log('AAB_URL=' + (aabResult
+              ? process.env.APPWRITE_ENDPOINT + '/storage/buckets/' + process.env.APPWRITE_BUCKET_ID + '/files/' + aabResult.$id + '/view'
+              : ''));
           }
           
           upload().catch(console.error);

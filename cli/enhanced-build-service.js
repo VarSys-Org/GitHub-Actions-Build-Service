@@ -294,6 +294,19 @@ async function build(options) {
     const profileConfig = easConfig?.build?.[profile];
     const buildConfig = mapProfileToConfig(profile, profileConfig);
     const projectType = detectProjectType(projectPath);
+
+    // Allow explicit CLI override when eas.json is absent or when forcing a one-off build type.
+    if (options.variant) {
+      const normalizedVariant = String(options.variant).toLowerCase();
+      if (!['debug', 'release'].includes(normalizedVariant)) {
+        throw new Error(`Invalid variant "${options.variant}". Use "debug" or "release".`);
+      }
+      buildConfig.variant = normalizedVariant;
+      if (normalizedVariant === 'debug') {
+        buildConfig.buildType = 'apk';
+      }
+    }
+
     console.log(`🧭 Project type: ${projectType}`);
 
     // Package project
@@ -333,7 +346,8 @@ const command = args[0];
 if (command === 'build') {
   const options = {
     path: null,
-    profile: 'production'
+    profile: 'production',
+    variant: null,
   };
 
   // Parse arguments
@@ -343,6 +357,9 @@ if (command === 'build') {
       i++;
     } else if (args[i] === '--profile' || args[i] === '--eas-profile') {
       options.profile = args[i + 1];
+      i++;
+    } else if (args[i] === '--variant') {
+      options.variant = args[i + 1];
       i++;
     } else if (args[i] === '-a' || args[i] === '--app') {
       // App name parameter (for compatibility)
@@ -359,10 +376,12 @@ if (command === 'build') {
   console.log('');
   console.log('Usage:');
   console.log('  build --profile <profile>    Build with EAS profile (development, preview, production)');
+  console.log('  build --variant <variant>    Override variant (debug or release)');
   console.log('  build -p <profile>           Short form');
   console.log('');
   console.log('Examples:');
   console.log('  node enhanced-build-service.js build --profile development');
   console.log('  node enhanced-build-service.js build -p preview');
   console.log('  node enhanced-build-service.js build -p production');
+  console.log('  node enhanced-build-service.js build --profile production --variant debug');
 }
