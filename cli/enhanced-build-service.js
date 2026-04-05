@@ -207,7 +207,28 @@ async function uploadToAppwrite(filePath, config) {
 }
 
 // Trigger GitHub Actions
-async function triggerBuild(sourceUrl, buildConfig, config) {
+function detectProjectType(projectPath) {
+  if (fs.existsSync(path.join(projectPath, 'pubspec.yaml'))) {
+    return 'flutter';
+  }
+  if (
+    fs.existsSync(path.join(projectPath, 'capacitor.config.ts')) ||
+    fs.existsSync(path.join(projectPath, 'capacitor.config.js')) ||
+    fs.existsSync(path.join(projectPath, 'capacitor.config.json'))
+  ) {
+    return 'capacitor';
+  }
+  if (
+    fs.existsSync(path.join(projectPath, 'app.json')) ||
+    fs.existsSync(path.join(projectPath, 'app.config.js')) ||
+    fs.existsSync(path.join(projectPath, 'app.config.ts'))
+  ) {
+    return 'expo';
+  }
+  return 'auto';
+}
+
+async function triggerBuild(sourceUrl, buildConfig, config, projectType) {
   const buildId = Date.now().toString();
   
   const payload = {
@@ -217,6 +238,7 @@ async function triggerBuild(sourceUrl, buildConfig, config) {
       build_id: buildId,
       platform: 'android',
       variant: buildConfig.variant,
+      project_type: projectType,
       build_type: buildConfig.buildType,
       gradle_command: getGradleCommand(buildConfig),
       auto_increment: buildConfig.autoIncrement,
@@ -271,6 +293,8 @@ async function build(options) {
     // Get profile configuration
     const profileConfig = easConfig?.build?.[profile];
     const buildConfig = mapProfileToConfig(profile, profileConfig);
+    const projectType = detectProjectType(projectPath);
+    console.log(`🧭 Project type: ${projectType}`);
 
     // Package project
     const packagePath = await packageProject(projectPath);
@@ -280,7 +304,7 @@ async function build(options) {
     const sourceUrl = `${config.appwriteEndpoint}/storage/buckets/${config.appwriteBucket}/files/${file.$id}/download`;
 
     // Trigger build
-    const buildId = await triggerBuild(sourceUrl, buildConfig, config);
+    const buildId = await triggerBuild(sourceUrl, buildConfig, config, projectType);
 
     // Cleanup
     fs.unlinkSync(packagePath);
