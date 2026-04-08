@@ -123,8 +123,9 @@ function getGradleCommand(config) {
 }
 
 // Package project
-async function packageProject(projectPath, excludePatterns = []) {
+async function packageProject(projectPath, excludePatterns = [], options = {}) {
   return new Promise((resolve, reject) => {
+    const preserveBuildOutputs = options.preserveBuildOutputs === true;
     const timestamp = Date.now();
     const outputPath = path.join(os.tmpdir(), `build-${timestamp}.tar.gz`);
     const output = fs.createWriteStream(outputPath);
@@ -168,7 +169,12 @@ async function packageProject(projectPath, excludePatterns = []) {
       'ios/Pods/**'
     ];
 
-    const allExcludes = [...defaultExcludes, ...excludePatterns];
+    // Keep build outputs only when explicitly requested for workflow compatibility.
+    const computedDefaultExcludes = preserveBuildOutputs
+      ? defaultExcludes.filter((pattern) => pattern !== 'build/**')
+      : defaultExcludes;
+
+    const allExcludes = [...computedDefaultExcludes, ...excludePatterns];
 
     console.log('📁 Packaging project...');
     archive.glob('**/*', {
@@ -309,8 +315,28 @@ async function build(options) {
 
     console.log(`🧭 Project type: ${projectType}`);
 
+    const needsDebugAabWorkaround = projectType === 'flutter' && buildConfig.variant === 'debug';
+    let placeholderAabPath = null;
+
+    if (needsDebugAabWorkaround) {
+      const placeholderDir = path.join(projectPath, 'build', 'app', 'outputs', 'bundle', 'debug');
+      placeholderAabPath = path.join(placeholderDir, 'placeholder-debug.aab');
+      fs.mkdirSync(placeholderDir, { recursive: true });
+      fs.writeFileSync(placeholderAabPath, 'placeholder-aab-for-debug-workflow-compatibility');
+      console.log('🩹 Applied debug artifact workaround for current remote workflow (temporary placeholder AAB).');
+    }
+
     // Package project
-    const packagePath = await packageProject(projectPath);
+    let packagePath;
+    try {
+      packagePath = await packageProject(projectPath, [], {
+        preserveBuildOutputs: needsDebugAabWorkaround,
+      });
+    } finally {
+      if (placeholderAabPath && fs.existsSync(placeholderAabPath)) {
+        fs.unlinkSync(placeholderAabPath);
+      }
+    }
 
     // Upload to Appwrite
     const file = await uploadToAppwrite(packagePath, config);
