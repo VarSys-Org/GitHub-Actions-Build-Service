@@ -6,9 +6,9 @@
  * Compatible with EAS Build configuration but uses our free self-hosted service
  * 
  * Usage:
- *   node enhanced-build-service.js build --profile development
- *   node enhanced-build-service.js build --profile preview
- *   node enhanced-build-service.js build --profile production
+ *   node build-work.js build --profile development
+ *   node build-work.js build --profile preview
+ *   node build-work.js build --profile production
  */
 
 const fs = require('fs');
@@ -21,19 +21,19 @@ const os = require('os');
 const { Client, Storage, ID, InputFile } = sdk;
 
 // Configuration
-const CONFIG_FILE = path.join(os.homedir(), '.build-service.json');
+const SETTINGS_FILE = path.join(os.homedir(), '.build-service.json');
 
 // Read configuration
-function loadConfig() {
-  if (!fs.existsSync(CONFIG_FILE)) {
+function loadSettings() {
+  if (!fs.existsSync(SETTINGS_FILE)) {
     console.error('❌ Configuration not found. Run: build-service configure');
     process.exit(1);
   }
-  return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
 }
 
 // Read eas.json from project
-function loadEasConfig(projectPath) {
+function loadEasSettings(projectPath) {
   const easJsonPath = path.join(projectPath, 'eas.json');
   if (!fs.existsSync(easJsonPath)) {
     console.log('⚠️  eas.json not found. Using default configuration.');
@@ -51,8 +51,8 @@ function loadEasConfig(projectPath) {
 }
 
 // Map EAS profile to build configuration
-function mapProfileToConfig(profile, profileConfig) {
-  const config = {
+function mapProfileToSettings(profile, profileConfig) {
+  const settings = {
     variant: 'release',
     buildType: 'apk',
     gradleCommand: null,
@@ -63,59 +63,59 @@ function mapProfileToConfig(profile, profileConfig) {
 
   if (!profileConfig) {
     console.log(`⚠️  Profile "${profile}" not found in eas.json, using defaults`);
-    return config;
+    return settings;
   }
 
   // Map developmentClient to debug variant
   if (profileConfig.developmentClient === true) {
-    config.variant = 'debug';
+    settings.variant = 'debug';
     console.log('📱 Development client enabled → using debug variant');
   }
 
   // Map distribution type
   if (profileConfig.distribution) {
-    config.distribution = profileConfig.distribution;
+    settings.distribution = profileConfig.distribution;
   }
 
   // Map android-specific configuration
   if (profileConfig.android) {
     if (profileConfig.android.buildType) {
-      config.buildType = profileConfig.android.buildType; // 'apk' or 'aab'
-      console.log(`📦 Build type: ${config.buildType.toUpperCase()}`);
+      settings.buildType = profileConfig.android.buildType; // 'apk' or 'aab'
+      console.log(`📦 Build type: ${settings.buildType.toUpperCase()}`);
     }
     
     if (profileConfig.android.gradleCommand) {
-      config.gradleCommand = profileConfig.android.gradleCommand;
-      console.log(`⚙️  Custom gradle command: ${config.gradleCommand}`);
+      settings.gradleCommand = profileConfig.android.gradleCommand;
+      console.log(`⚙️  Custom gradle command: ${settings.gradleCommand}`);
     }
   }
 
   // Map environment variables
   if (profileConfig.env) {
-    config.env = profileConfig.env;
-    console.log(`🔧 Environment variables: ${Object.keys(config.env).length} variables`);
+    settings.env = profileConfig.env;
+    console.log(`🔧 Environment variables: ${Object.keys(settings.env).length} variables`);
   }
 
   // Map autoIncrement
   if (profileConfig.autoIncrement === true) {
-    config.autoIncrement = true;
+    settings.autoIncrement = true;
     console.log('🔢 Auto-increment version code enabled');
   }
 
-  return config;
+  return settings;
 }
 
 // Determine gradle command based on configuration
-function getGradleCommand(config) {
+function getGradleCommand(settings) {
   // If custom gradle command specified, use it
-  if (config.gradleCommand) {
-    return config.gradleCommand;
+  if (settings.gradleCommand) {
+    return settings.gradleCommand;
   }
 
   // Map variant and build type to gradle command
-  const variantCapitalized = config.variant.charAt(0).toUpperCase() + config.variant.slice(1);
+  const variantCapitalized = settings.variant.charAt(0).toUpperCase() + settings.variant.slice(1);
   
-  if (config.buildType === 'aab') {
+  if (settings.buildType === 'aab') {
     return `bundle${variantCapitalized}`;
   } else {
     return `assemble${variantCapitalized}`;
@@ -188,11 +188,11 @@ async function packageProject(projectPath, excludePatterns = [], options = {}) {
 }
 
 // Upload to Appwrite
-async function uploadToAppwrite(filePath, config) {
+async function uploadToAppwrite(filePath, settings) {
   const client = new Client()
-    .setEndpoint(config.appwriteEndpoint)
-    .setProject(config.appwriteProject)
-    .setKey(config.appwriteKey);
+    .setEndpoint(settings.appwriteEndpoint)
+    .setProject(settings.appwriteProject)
+    .setKey(settings.appwriteKey);
 
   const storage = new Storage(client);
 
@@ -203,7 +203,7 @@ async function uploadToAppwrite(filePath, config) {
   const fileName = path.basename(filePath);
   
   const file = await storage.createFile(
-    config.appwriteBucket,
+    settings.appwriteBucket,
     ID.unique(),
     InputFile.fromBuffer(fileBuffer, fileName)
   );
@@ -234,7 +234,7 @@ function detectProjectType(projectPath) {
   return 'auto';
 }
 
-async function triggerBuild(sourceUrl, buildConfig, config, projectType) {
+async function triggerBuild(sourceUrl, buildConfig, settings, projectType) {
   const buildId = Date.now().toString();
   
   const payload = {
@@ -259,11 +259,11 @@ async function triggerBuild(sourceUrl, buildConfig, config, projectType) {
   console.log(`📦 Output: ${buildConfig.buildType.toUpperCase()}`);
 
   const response = await fetch(
-    `https://api.github.com/repos/${config.githubRepo}/dispatches`,
+    `https://api.github.com/repos/${settings.githubRepo}/dispatches`,
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${config.githubToken}`,
+        'Authorization': `Bearer ${settings.githubToken}`,
         'Accept': 'application/vnd.github.v3+json',
         'Content-Type': 'application/json'
       },
@@ -276,7 +276,7 @@ async function triggerBuild(sourceUrl, buildConfig, config, projectType) {
   }
 
   console.log('✅ Build triggered successfully');
-  console.log(`🔗 Monitor: https://github.com/${config.githubRepo}/actions`);
+  console.log(`🔗 Monitor: https://github.com/${settings.githubRepo}/actions`);
   
   return buildId;
 }
@@ -293,32 +293,32 @@ async function build(options) {
     console.log('');
 
     // Load configurations
-    const config = loadConfig();
-    const easConfig = loadEasConfig(projectPath);
+    const settings = loadSettings();
+    const easConfig = loadEasSettings(projectPath);
     
     // Get profile configuration
     const profileConfig = easConfig?.build?.[profile];
-    const buildConfig = mapProfileToConfig(profile, profileConfig);
+    const buildConfig = mapProfileToSettings(profile, profileConfig);
     const projectType = detectProjectType(projectPath);
 
     // Allow explicit CLI override when eas.json is absent or when forcing a one-off build type.
     if (options.variant) {
-      const normalizedVariant = String(options.variant).toLowerCase();
-      if (!['debug', 'release'].includes(normalizedVariant)) {
+      const variantName = String(options.variant).toLowerCase();
+      if (!['debug', 'release'].includes(variantName)) {
         throw new Error(`Invalid variant "${options.variant}". Use "debug" or "release".`);
       }
-      buildConfig.variant = normalizedVariant;
-      if (normalizedVariant === 'debug') {
+      buildConfig.variant = variantName;
+      if (variantName === 'debug') {
         buildConfig.buildType = 'apk';
       }
     }
 
     console.log(`🧭 Project type: ${projectType}`);
 
-    const needsDebugAabWorkaround = projectType === 'flutter' && buildConfig.variant === 'debug';
+    const debugAabNeedsFix = projectType === 'flutter' && buildConfig.variant === 'debug';
     let placeholderAabPath = null;
 
-    if (needsDebugAabWorkaround) {
+    if (debugAabNeedsFix) {
       const placeholderDir = path.join(projectPath, 'build', 'app', 'outputs', 'bundle', 'debug');
       placeholderAabPath = path.join(placeholderDir, 'placeholder-debug.aab');
       fs.mkdirSync(placeholderDir, { recursive: true });
@@ -330,7 +330,7 @@ async function build(options) {
     let packagePath;
     try {
       packagePath = await packageProject(projectPath, [], {
-        preserveBuildOutputs: needsDebugAabWorkaround,
+        preserveBuildOutputs: debugAabNeedsFix,
       });
     } finally {
       if (placeholderAabPath && fs.existsSync(placeholderAabPath)) {
@@ -339,11 +339,11 @@ async function build(options) {
     }
 
     // Upload to Appwrite
-    const file = await uploadToAppwrite(packagePath, config);
-    const sourceUrl = `${config.appwriteEndpoint}/storage/buckets/${config.appwriteBucket}/files/${file.$id}/download`;
+    const file = await uploadToAppwrite(packagePath, settings);
+    const sourceUrl = `${settings.appwriteEndpoint}/storage/buckets/${settings.appwriteBucket}/files/${file.$id}/download`;
 
     // Trigger build
-    const buildId = await triggerBuild(sourceUrl, buildConfig, config, projectType);
+    const buildId = await triggerBuild(sourceUrl, buildConfig, settings, projectType);
 
     // Cleanup
     fs.unlinkSync(packagePath);
@@ -357,7 +357,7 @@ async function build(options) {
     console.log(`   Output: ${buildConfig.buildType.toUpperCase()}`);
     console.log('');
     console.log('⏳ Build typically takes 15-25 minutes');
-    console.log(`🔗 Monitor at: https://github.com/${config.githubRepo}/actions`);
+    console.log(`🔗 Monitor at: https://github.com/${settings.githubRepo}/actions`);
 
   } catch (error) {
     console.error('\n❌ Build failed:', error.message);
@@ -406,8 +406,8 @@ if (command === 'build') {
   console.log('  build -p <profile>           Short form');
   console.log('');
   console.log('Examples:');
-  console.log('  node enhanced-build-service.js build --profile development');
-  console.log('  node enhanced-build-service.js build -p preview');
-  console.log('  node enhanced-build-service.js build -p production');
-  console.log('  node enhanced-build-service.js build --profile production --variant debug');
+  console.log('  node build-work.js build --profile development');
+  console.log('  node build-work.js build -p preview');
+  console.log('  node build-work.js build -p production');
+  console.log('  node build-work.js build --profile production --variant debug');
 }
