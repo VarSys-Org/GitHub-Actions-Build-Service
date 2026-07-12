@@ -106,6 +106,7 @@ jobs:
           repository: ${{ steps.build_info.outputs.REPO }}
           path: project
           ref: main
+          token: ${{ secrets.GH_PAT }}
 
       - name: Download source code (from Appwrite)
         if: steps.build_info.outputs.SOURCE_URL != ''
