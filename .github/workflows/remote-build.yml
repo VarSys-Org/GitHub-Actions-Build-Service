@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       source_url:
-        description: 'Source code archive URL (Appwrite Storage or direct URL)'
-        required: true
+        description: 'Source code archive URL (skip to build from checkout)'
+        required: false
       build_id:
         description: 'Unique build identifier'
-        required: true
+        required: false
       callback_url:
         description: 'Optional webhook URL to notify when build completes'
         required: false
@@ -18,6 +18,13 @@ on:
         description: 'Project type: auto (default), flutter, expo, capacitor'
         required: false
         default: 'auto'
+      variant:
+        description: 'Build variant: debug (default) or release'
+        required: false
+        default: 'debug'
+      repo:
+        description: 'Repo to build (e.g. VarSys-Org/Joint-Journey-web)'
+        required: false
       flutter_version:
         description: 'Flutter version (e.g. 3.24.0). Leave empty for stable channel.'
         required: false
@@ -30,13 +37,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
-      - name: Setup Java
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -66,6 +78,7 @@ jobs:
             CALLBACK_URL="${{ github.event.inputs.callback_url }}"
             VARIANT="${{ github.event.inputs.variant }}"
             PROJECT_TYPE="${{ github.event.inputs.project_type }}"
+            REPO="${{ github.event.inputs.repo }}"
           else
             SOURCE_URL="${{ github.event.client_payload.source_url }}"
             BUILD_ID="${{ github.event.client_payload.build_id }}"
@@ -84,36 +97,44 @@ jobs:
           echo "VARIANT=$VARIANT" >> $GITHUB_OUTPUT
           echo "BUILD_NUMBER=$(date +%s)" >> $GITHUB_OUTPUT
           echo "PROJECT_TYPE=$PROJECT_TYPE" >> $GITHUB_OUTPUT
+          echo "REPO=$REPO" >> $GITHUB_OUTPUT
 
-      - name: Download source code
+      - name: Download or checkout source code
         env:
           APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
         run: |
-          echo "Downloading source from: ${{ steps.build_info.outputs.SOURCE_URL }}"
-          curl -L -o source.tar.gz \
-            -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
-            -H "X-Appwrite-Key: $APPWRITE_API_KEY" \
-            "${{ steps.build_info.outputs.SOURCE_URL }}"
+          SOURCE_URL="${{ steps.build_info.outputs.SOURCE_URL }}"
+          REPO="${{ steps.build_info.outputs.REPO }}"
           
-          echo "Verifying download..."
-          file source.tar.gz
-          
-          mkdir -p project
-          tar -xzf source.tar.gz -C project
-          ls -la project
-          echo "Contents of project directory:"
-          ls -la project/
+          if [ -n "$SOURCE_URL" ]; then
+            echo "Downloading source from: $SOURCE_URL"
+            curl -L -o source.tar.gz \
+              -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
+              -H "X-Appwrite-Key: $APPWRITE_API_KEY" \
+              "$SOURCE_URL"
+            mkdir -p project
+            tar -xzf source.tar.gz -C project
+          elif [ -n "$REPO" ]; then
+            echo "Checking out repo: $REPO"
+            git clone --depth 1 "https://github.com/$REPO.git" project
+          else
+            echo "No source URL or repo provided"
+            mkdir -p project
+          fi
+          echo "Contents:"
+          ls -la project/ 2>/dev/null || echo "(empty)"
 
-      - name: Cache npm dependencies
+      - name: Cache dependencies
         uses: actions/cache@v4
         if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         with:
           path: |
             project/node_modules
             ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('project/package-lock.json', 'project/package.json') }}
+            ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-deps-${{ hashFiles('project/package-lock.json', 'project/pnpm-lock.yaml', 'project/yarn.lock') }}
           restore-keys: |
-            ${{ runner.os }}-npm-
+            ${{ runner.os }}-deps-
 
       - name: Cache Android SDK
         uses: actions/cache@v4
@@ -131,6 +152,10 @@ jobs:
           if [ -f "pubspec.yaml" ]; then
             echo "Flutter project — running flutter pub get"
             flutter pub get
+          elif [ -f "pnpm-lock.yaml" ]; then
+            echo "pnpm project detected"
+            corepack enable
+            pnpm install --ignore-scripts
           elif [ -f "package-lock.json" ]; then
             npm ci
           elif [ -f "yarn.lock" ]; then
@@ -160,8 +185,12 @@ jobs:
 
           if [ -f "capacitor.config.ts" ] || [ -f "capacitor.config.js" ] || [ -f "capacitor.config.json" ]; then
             echo "Capacitor project detected"
-            if npm run | grep -q "cap:build"; then
-              npm run cap:build
+            if grep -q '"cap:build"' package.json; then
+              if [ -f "pnpm-lock.yaml" ]; then
+                corepack enable && pnpm cap:build
+              else
+                npm run cap:build
+              fi
             else
               npm run build
               npx cap sync android
@@ -180,6 +209,9 @@ jobs:
             echo "android directory was not generated"
             exit 1
           fi
+
+          # Fix gradlew permissions
+          chmod +x android/gradlew 2>/dev/null || true
 
       - name: Build Flutter APK
         working-directory: project
@@ -237,9 +269,9 @@ jobs:
         working-directory: project/android
         if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         env:
-          GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
-          JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
+          GRADLE_OPTS: -Xmx4g
         run: |
+          chmod +x gradlew
           VARIANT="${{ steps.build_info.outputs.VARIANT }}"
           VARIANT_CAPITALIZED="$(echo ${VARIANT^})"
           echo "Building variant: $VARIANT"
@@ -249,9 +281,9 @@ jobs:
         working-directory: project/android
         if: steps.build_info.outputs.PROJECT_TYPE != 'flutter'
         env:
-          GRADLE_OPTS: -Xmx7g -XX:MaxMetaspaceSize=3g -XX:+HeapDumpOnOutOfMemoryError
-          JAVA_TOOL_OPTIONS: -Xmx7g -XX:MaxMetaspaceSize=3g
+          GRADLE_OPTS: -Xmx4g
         run: |
+          chmod +x gradlew
           VARIANT="${{ steps.build_info.outputs.VARIANT }}"
           VARIANT_CAPITALIZED="$(echo ${VARIANT^})"
           ./gradlew bundle${VARIANT_CAPITALIZED} --no-daemon
@@ -300,16 +332,17 @@ jobs:
         run: |
           npm install node-appwrite
           node -e "
-          const { Client, Storage, ID, InputFile } = require('node-appwrite');
+          const { Client, Storage, ID } = require('node-appwrite');
+          const { InputFile } = require('node-appwrite/file');
           const fs = require('fs');
-          
+
           const client = new Client()
             .setEndpoint(process.env.APPWRITE_ENDPOINT)
             .setProject(process.env.APPWRITE_PROJECT_ID)
             .setKey(process.env.APPWRITE_API_KEY);
-          
+
           const storage = new Storage(client);
-          
+
           async function upload() {
             const apkFile = fs.readdirSync('.').find(f => f.endsWith('.apk'));
             const aabFile = fs.readdirSync('.').find(f => f.endsWith('.aab'));
@@ -337,16 +370,10 @@ jobs:
               );
             }
 
-            console.log('APK_FILE_ID=' + (apkResult ? apkResult.$id : ''));
-            console.log('AAB_FILE_ID=' + (aabResult ? aabResult.$id : ''));
-            console.log('APK_URL=' + (apkResult
-              ? process.env.APPWRITE_ENDPOINT + '/storage/buckets/' + process.env.APPWRITE_BUCKET_ID + '/files/' + apkResult.$id + '/view'
-              : ''));
-            console.log('AAB_URL=' + (aabResult
-              ? process.env.APPWRITE_ENDPOINT + '/storage/buckets/' + process.env.APPWRITE_BUCKET_ID + '/files/' + aabResult.$id + '/view'
-              : ''));
+            console.log('APK_FILE_ID=' + (apkResult ? apkResult.\$id : ''));
+            console.log('AAB_FILE_ID=' + (aabResult ? aabResult.\$id : ''));
           }
-          
+
           upload().catch(console.error);
           " | tee -a $GITHUB_OUTPUT
 
