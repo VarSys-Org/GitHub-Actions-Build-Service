@@ -99,30 +99,28 @@ jobs:
           echo "PROJECT_TYPE=$PROJECT_TYPE" >> $GITHUB_OUTPUT
           echo "REPO=$REPO" >> $GITHUB_OUTPUT
 
-      - name: Download or checkout source code
+      - name: Checkout source repo (if no source_url)
+        uses: actions/checkout@v4
+        if: steps.build_info.outputs.SOURCE_URL == '' && steps.build_info.outputs.REPO != ''
+        with:
+          repository: ${{ steps.build_info.outputs.REPO }}
+          path: project
+          ref: main
+
+      - name: Download source code (from Appwrite)
+        if: steps.build_info.outputs.SOURCE_URL != ''
         env:
           APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
         run: |
           SOURCE_URL="${{ steps.build_info.outputs.SOURCE_URL }}"
-          REPO="${{ steps.build_info.outputs.REPO }}"
-          
-          if [ -n "$SOURCE_URL" ]; then
-            echo "Downloading source from: $SOURCE_URL"
-            curl -L -o source.tar.gz \
-              -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
-              -H "X-Appwrite-Key: $APPWRITE_API_KEY" \
-              "$SOURCE_URL"
-            mkdir -p project
-            tar -xzf source.tar.gz -C project
-          elif [ -n "$REPO" ]; then
-            echo "Checking out repo: $REPO"
-            git clone --depth 1 "https://github.com/$REPO.git" project
-          else
-            echo "No source URL or repo provided"
-            mkdir -p project
-          fi
-          echo "Contents:"
-          ls -la project/ 2>/dev/null || echo "(empty)"
+          echo "Downloading source from: $SOURCE_URL"
+          curl -L -o source.tar.gz \
+            -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
+            -H "X-Appwrite-Key: $APPWRITE_API_KEY" \
+            "$SOURCE_URL"
+          mkdir -p project
+          tar -xzf source.tar.gz -C project
+          ls -la project/
 
       - name: Cache dependencies
         uses: actions/cache@v4
