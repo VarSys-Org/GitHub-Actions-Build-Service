@@ -166,15 +166,18 @@ jobs:
       - name: Create .env file (if secrets provided)
         working-directory: project
         run: |
-          if [ -n "${{ secrets.APPWRITE_ENDPOINT }}" ]; then
-            cat > .env << EOF
+          cat > .env << EOF
+          # Build Service storage config
           APPWRITE_ENDPOINT=${{ secrets.APPWRITE_ENDPOINT }}
           APPWRITE_PROJECT_ID=${{ secrets.APPWRITE_PROJECT_ID }}
           APPWRITE_DATABASE_ID=${{ secrets.APPWRITE_DATABASE_ID }}
           APPWRITE_COLLECTION_ID=${{ secrets.APPWRITE_COLLECTION_ID }}
           APPWRITE_BUCKET_ID=${{ secrets.APPWRITE_BUCKET_ID }}
+          # Project Appwrite config (for Capacitor/Vite apps)
+          VITE_APPWRITE_ENDPOINT=${{ secrets.JJ_APPWRITE_ENDPOINT }}
+          VITE_APPWRITE_PROJECT_ID=${{ secrets.JJ_APPWRITE_PROJECT_ID }}
+          VITE_APPWRITE_DATABASE_ID=${{ secrets.JJ_APPWRITE_DATABASE_ID }}
           EOF
-          fi
 
       - name: Prepare Android project (Expo or Capacitor)
         working-directory: project
