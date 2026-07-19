@@ -28,6 +28,13 @@ on:
       flutter_version:
         description: 'Flutter version (e.g. 3.24.0). Leave empty for stable channel.'
         required: false
+      build_channel:
+        description: 'Build channel (staging or production)'
+        required: false
+        default: 'staging'
+      store_callback_url:
+        description: 'Callback URL for the Build Orchestrator'
+        required: false
 
 jobs:
   remote-build:
@@ -83,21 +90,26 @@ jobs:
             SOURCE_URL="${{ github.event.client_payload.source_url }}"
             BUILD_ID="${{ github.event.client_payload.build_id }}"
             CALLBACK_URL="${{ github.event.client_payload.callback_url }}"
+            STORE_CALLBACK="${{ github.event.client_payload.store_callback_url }}"
             VARIANT="${{ github.event.client_payload.variant }}"
             PROJECT_TYPE="${{ github.event.client_payload.project_type }}"
+            BUILD_CHANNEL="${{ github.event.client_payload.build_channel }}"
           fi
           
           # Default to release if no variant specified
           VARIANT="${VARIANT:-release}"
           PROJECT_TYPE="${PROJECT_TYPE:-auto}"
+          BUILD_CHANNEL="${BUILD_CHANNEL:-staging}"
           
           echo "SOURCE_URL=$SOURCE_URL" >> $GITHUB_OUTPUT
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_OUTPUT
           echo "CALLBACK_URL=$CALLBACK_URL" >> $GITHUB_OUTPUT
+          echo "STORE_CALLBACK_URL=$STORE_CALLBACK" >> $GITHUB_OUTPUT
           echo "VARIANT=$VARIANT" >> $GITHUB_OUTPUT
           echo "BUILD_NUMBER=$(date +%s)" >> $GITHUB_OUTPUT
           echo "PROJECT_TYPE=$PROJECT_TYPE" >> $GITHUB_OUTPUT
           echo "REPO=$REPO" >> $GITHUB_OUTPUT
+          echo "BUILD_CHANNEL=$BUILD_CHANNEL" >> $GITHUB_OUTPUT
 
       - name: Checkout source repo (if no source_url)
         uses: actions/checkout@v4
@@ -392,6 +404,45 @@ jobs:
               "apk_url": "${{ steps.upload.outputs.APK_URL }}",
               "build_number": "${{ steps.build_info.outputs.BUILD_NUMBER }}"
             }'
+
+      - name: Notify Build Orchestrator
+        if: steps.build_info.outputs.STORE_CALLBACK_URL != ''
+        env:
+          APK_PATH: ${{ steps.upload.outputs.APK_FILE_ID }}
+          BUILD_NUM: ${{ steps.build_info.outputs.BUILD_NUMBER }}
+        run: |
+          APK_FILE_ID="${{ steps.upload.outputs.APK_FILE_ID }}"
+          APK_URL=""
+          FILE_SIZE=0
+          
+          # Find the actual APK file to get its size
+          if [ -n "$APK_FILE_ID" ]; then
+            APK_URL="https://fra.cloud.appwrite.io/v1/storage/buckets/${{ secrets.APPWRITE_BUCKET_ID }}/files/${APK_FILE_ID}/download?project=${{ secrets.APPWRITE_PROJECT_ID }}"
+            # Try to get file info via Appwrite API
+            FILE_INFO=$(curl -s \
+              -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
+              -H "X-Appwrite-Key: ${{ secrets.APPWRITE_API_KEY }}" \
+              "https://fra.cloud.appwrite.io/v1/storage/buckets/${{ secrets.APPWRITE_BUCKET_ID }}/files/${APK_FILE_ID}")
+            FILE_SIZE=$(echo "$FILE_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sizeOriginal', 0))" 2>/dev/null || echo "0")
+          fi
+          
+          STATUS="completed"
+          ERROR_MSG=""
+          if [ -z "$APK_FILE_ID" ]; then
+            STATUS="failed"
+            ERROR_MSG="No APK file was produced"
+          fi
+          
+          curl -X POST "${{ steps.build_info.outputs.STORE_CALLBACK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"status\": \"${STATUS}\",
+              \"apk_file_id\": \"${APK_FILE_ID}\",
+              \"apk_file_url\": \"${APK_URL}\",
+              \"file_size\": ${FILE_SIZE},
+              \"build_number\": ${{ steps.build_info.outputs.BUILD_NUMBER }},
+              \"error_message\": \"${ERROR_MSG}\"
+            }"
 
       - name: Upload artifacts to GitHub
         uses: actions/upload-artifact@v4
