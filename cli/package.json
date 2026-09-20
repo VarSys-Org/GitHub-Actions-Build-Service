@@ -7,7 +7,7 @@
     "build-service": "./enhanced-build-service.js"
   },
   "scripts": {
-    "test": "echo \"No tests yet\""
+    "test": "node --test security.test.js && node ../scripts/validate-workflow.js"
   },
   "keywords": [
     "expo",

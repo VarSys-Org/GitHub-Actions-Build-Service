@@ -1,5 +1,17 @@
 name: Remote Build Service
 
+run-name: Remote build [team=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.team_id || github.event.client_payload.team_id || 'default-team' }} project=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.project_id || github.event.client_payload.project_id || 'default-project' }}]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # A repeated source/profile request cancels the older duplicate. The build
+  # admission step separately enforces team and project quotas.
+  group: remote-build-dedup-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dedup_key || github.event.client_payload.dedup_key || github.run_id }}
+  cancel-in-progress: true
+
 on:
   repository_dispatch:
     types: [remote-build]
@@ -35,10 +47,25 @@ on:
       store_callback_url:
         description: 'Callback URL for the Build Orchestrator'
         required: false
+      source_file_id:
+        description: 'Appwrite Storage file ID for the source archive'
+        required: false
+      team_id:
+        description: 'Build service team quota identifier'
+        required: false
+      project_id:
+        description: 'Build service project quota identifier'
+        required: false
+      dedup_key:
+        description: 'Stable source/profile deduplication key'
+        required: false
 
 jobs:
   remote-build:
     runs-on: ubuntu-latest
+    concurrency:
+      group: remote-build-project-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.project_id || github.event.client_payload.project_id || 'default-project' }}
+      cancel-in-progress: false
     
     steps:
       - name: Setup Node.js
@@ -60,6 +87,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Checkout build service security helpers
+        uses: actions/checkout@v4
+        with:
+          path: build-service
+          persist-credentials: false
+
       - name: Setup Flutter (if Flutter project)
         uses: subosito/flutter-action@v2
         with:
@@ -77,39 +110,115 @@ jobs:
 
       - name: Extract build info
         id: build_info
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_SOURCE_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_url || '' }}
+          PAYLOAD_SOURCE_URL: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.source_url || '' }}
+          INPUT_SOURCE_FILE_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source_file_id || '' }}
+          PAYLOAD_SOURCE_FILE_ID: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.source_file_id || '' }}
+          INPUT_BUILD_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_id || '' }}
+          PAYLOAD_BUILD_ID: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.build_id || '' }}
+          INPUT_CALLBACK_URL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.callback_url || '' }}
+          PAYLOAD_CALLBACK_URL: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.callback_url || '' }}
+          INPUT_STORE_CALLBACK: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.store_callback_url || '' }}
+          PAYLOAD_STORE_CALLBACK: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.store_callback_url || '' }}
+          INPUT_VARIANT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.variant || '' }}
+          PAYLOAD_VARIANT: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.variant || '' }}
+          INPUT_PROJECT_TYPE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.project_type || '' }}
+          PAYLOAD_PROJECT_TYPE: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.project_type || '' }}
+          INPUT_REPO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.repo || '' }}
+          PAYLOAD_REPO: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.repo || '' }}
+          INPUT_BUILD_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_channel || '' }}
+          PAYLOAD_BUILD_CHANNEL: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.build_channel || '' }}
+          INPUT_TEAM_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.team_id || '' }}
+          PAYLOAD_TEAM_ID: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.team_id || '' }}
+          INPUT_PROJECT_ID: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.project_id || '' }}
+          PAYLOAD_PROJECT_ID: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.project_id || '' }}
+          INPUT_DEDUP_KEY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.dedup_key || '' }}
+          PAYLOAD_DEDUP_KEY: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.dedup_key || '' }}
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT }}
+          APPWRITE_BUCKET_ID: ${{ secrets.APPWRITE_BUCKET_ID }}
         run: |
-          # Handle both workflow_dispatch and repository_dispatch
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            SOURCE_URL="${{ github.event.inputs.source_url }}"
-            BUILD_ID="${{ github.event.inputs.build_id }}"
-            CALLBACK_URL="${{ github.event.inputs.callback_url }}"
-            VARIANT="${{ github.event.inputs.variant }}"
-            PROJECT_TYPE="${{ github.event.inputs.project_type }}"
-            REPO="${{ github.event.inputs.repo }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SOURCE_URL="$INPUT_SOURCE_URL"
+            SOURCE_FILE_ID="$INPUT_SOURCE_FILE_ID"
+            BUILD_ID="$INPUT_BUILD_ID"
+            CALLBACK_URL="$INPUT_CALLBACK_URL"
+            STORE_CALLBACK="$INPUT_STORE_CALLBACK"
+            VARIANT="$INPUT_VARIANT"
+            PROJECT_TYPE="$INPUT_PROJECT_TYPE"
+            REPO="$INPUT_REPO"
+            BUILD_CHANNEL="$INPUT_BUILD_CHANNEL"
+            TEAM_ID="$INPUT_TEAM_ID"
+            PROJECT_ID="$INPUT_PROJECT_ID"
+            DEDUP_KEY="$INPUT_DEDUP_KEY"
           else
-            SOURCE_URL="${{ github.event.client_payload.source_url }}"
-            BUILD_ID="${{ github.event.client_payload.build_id }}"
-            CALLBACK_URL="${{ github.event.client_payload.callback_url }}"
-            STORE_CALLBACK="${{ github.event.client_payload.store_callback_url }}"
-            VARIANT="${{ github.event.client_payload.variant }}"
-            PROJECT_TYPE="${{ github.event.client_payload.project_type }}"
-            BUILD_CHANNEL="${{ github.event.client_payload.build_channel }}"
+            SOURCE_URL="$PAYLOAD_SOURCE_URL"
+            SOURCE_FILE_ID="$PAYLOAD_SOURCE_FILE_ID"
+            BUILD_ID="$PAYLOAD_BUILD_ID"
+            CALLBACK_URL="$PAYLOAD_CALLBACK_URL"
+            STORE_CALLBACK="$PAYLOAD_STORE_CALLBACK"
+            VARIANT="$PAYLOAD_VARIANT"
+            PROJECT_TYPE="$PAYLOAD_PROJECT_TYPE"
+            REPO="$PAYLOAD_REPO"
+            BUILD_CHANNEL="$PAYLOAD_BUILD_CHANNEL"
+            TEAM_ID="$PAYLOAD_TEAM_ID"
+            PROJECT_ID="$PAYLOAD_PROJECT_ID"
+            DEDUP_KEY="$PAYLOAD_DEDUP_KEY"
           fi
           
           # Default to release if no variant specified
           VARIANT="${VARIANT:-release}"
           PROJECT_TYPE="${PROJECT_TYPE:-auto}"
           BUILD_CHANNEL="${BUILD_CHANNEL:-staging}"
-          
-          echo "SOURCE_URL=$SOURCE_URL" >> $GITHUB_OUTPUT
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_OUTPUT
-          echo "CALLBACK_URL=$CALLBACK_URL" >> $GITHUB_OUTPUT
-          echo "STORE_CALLBACK_URL=$STORE_CALLBACK" >> $GITHUB_OUTPUT
-          echo "VARIANT=$VARIANT" >> $GITHUB_OUTPUT
-          echo "BUILD_NUMBER=$(date +%s)" >> $GITHUB_OUTPUT
-          echo "PROJECT_TYPE=$PROJECT_TYPE" >> $GITHUB_OUTPUT
-          echo "REPO=$REPO" >> $GITHUB_OUTPUT
-          echo "BUILD_CHANNEL=$BUILD_CHANNEL" >> $GITHUB_OUTPUT
+          BUILD_ID="${BUILD_ID:-$(date +%s)}"
+          TEAM_ID="${TEAM_ID:-default-team}"
+          PROJECT_ID="${PROJECT_ID:-default-project}"
+          DEDUP_KEY="${DEDUP_KEY:-$BUILD_ID}"
+
+          # Legacy source_url is accepted only as an input to the validator;
+          # the output contains the validated file ID, never the raw URL.
+          if [ -z "$SOURCE_FILE_ID" ] && [ -n "$SOURCE_URL" ]; then
+            SOURCE_URL_INPUT="$SOURCE_URL" SOURCE_FILE_ID="" node build-service/cli/security.js source-file-id > /tmp/source-file-id
+            SOURCE_FILE_ID=$(cat /tmp/source-file-id)
+          fi
+
+          if [ -n "$SOURCE_FILE_ID" ]; then
+            SOURCE_FILE_ID="$SOURCE_FILE_ID" node build-service/cli/security.js source-url > /dev/null
+          fi
+          case "$BUILD_ID" in ''|*[!A-Za-z0-9._-]*) echo "Invalid build ID" >&2; exit 1 ;; esac
+          case "$TEAM_ID" in ''|*[!A-Za-z0-9._-]*) echo "Invalid team ID" >&2; exit 1 ;; esac
+          case "$PROJECT_ID" in ''|*[!A-Za-z0-9._-]*) echo "Invalid project ID" >&2; exit 1 ;; esac
+          case "$DEDUP_KEY" in ''|*[!A-Za-z0-9._-]*) echo "Invalid deduplication key" >&2; exit 1 ;; esac
+          case "$VARIANT" in ''|*[!A-Za-z0-9._-]*) echo "Invalid variant" >&2; exit 1 ;; esac
+          case "$PROJECT_TYPE" in ''|*[!A-Za-z0-9._-]*) echo "Invalid project type" >&2; exit 1 ;; esac
+          case "$BUILD_CHANNEL" in ''|*[!A-Za-z0-9._-]*) echo "Invalid build channel" >&2; exit 1 ;; esac
+          case "$REPO" in '') ;; *[!A-Za-z0-9._/-]*) echo "Invalid repository" >&2; exit 1 ;; esac
+
+          echo "SOURCE_URL=${SOURCE_FILE_ID:+requested}" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_FILE_ID=$SOURCE_FILE_ID" >> "$GITHUB_OUTPUT"
+          echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          printf 'CALLBACK_URL_B64=%s\n' "$(printf '%s' "$CALLBACK_URL" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          printf 'STORE_CALLBACK_URL_B64=%s\n' "$(printf '%s' "$STORE_CALLBACK" | base64 -w0)" >> "$GITHUB_OUTPUT"
+          echo "VARIANT=$VARIANT" >> "$GITHUB_OUTPUT"
+          echo "BUILD_NUMBER=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "PROJECT_TYPE=$PROJECT_TYPE" >> "$GITHUB_OUTPUT"
+          echo "REPO=$REPO" >> "$GITHUB_OUTPUT"
+          echo "BUILD_CHANNEL=$BUILD_CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "TEAM_ID=${TEAM_ID:-default-team}" >> "$GITHUB_OUTPUT"
+          echo "PROJECT_ID=${PROJECT_ID:-default-project}" >> "$GITHUB_OUTPUT"
+          echo "DEDUP_KEY=${DEDUP_KEY:-$BUILD_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Enforce build quotas
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUILD_TEAM_ID: ${{ steps.build_info.outputs.TEAM_ID }}
+          BUILD_PROJECT_ID: ${{ steps.build_info.outputs.PROJECT_ID }}
+          BUILD_MAX_TEAM_CONCURRENCY: ${{ secrets.BUILD_MAX_TEAM_CONCURRENCY }}
+          BUILD_MAX_PROJECT_CONCURRENCY: ${{ secrets.BUILD_MAX_PROJECT_CONCURRENCY }}
+          BUILD_ALLOWED_TEAMS: ${{ secrets.BUILD_ALLOWED_TEAMS }}
+          BUILD_ALLOWED_PROJECTS: ${{ secrets.BUILD_ALLOWED_PROJECTS }}
+        run: node build-service/cli/security.js quota
 
       - name: Checkout source repo (if no source_url)
         uses: actions/checkout@v4
@@ -121,13 +230,17 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Download source code (from Appwrite)
-        if: steps.build_info.outputs.SOURCE_URL != ''
+        if: steps.build_info.outputs.SOURCE_URL != '' || steps.build_info.outputs.SOURCE_FILE_ID != ''
         env:
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT }}
+          APPWRITE_BUCKET_ID: ${{ secrets.APPWRITE_BUCKET_ID }}
           APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+          SOURCE_FILE_ID: ${{ steps.build_info.outputs.SOURCE_FILE_ID }}
         run: |
-          SOURCE_URL="${{ steps.build_info.outputs.SOURCE_URL }}"
-          echo "Downloading source from: $SOURCE_URL"
+          SOURCE_URL=$(node build-service/cli/security.js source-url)
+          echo "Downloading source from the configured Appwrite endpoint"
           curl -L -o source.tar.gz \
+            --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 \
             -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
             -H "X-Appwrite-Key: $APPWRITE_API_KEY" \
             "$SOURCE_URL"
@@ -392,37 +505,48 @@ jobs:
           " | tee -a $GITHUB_OUTPUT
 
       - name: Send callback notification
-        if: steps.build_info.outputs.CALLBACK_URL != ''
+        if: steps.build_info.outputs.CALLBACK_URL_B64 != ''
+        env:
+          CALLBACK_URL_B64: ${{ steps.build_info.outputs.CALLBACK_URL_B64 }}
+          CALLBACK_ALLOWED_HOSTS: ${{ secrets.CALLBACK_ALLOWED_HOSTS }}
+          CALLBACK_SIGNING_SECRET: ${{ secrets.CALLBACK_SIGNING_SECRET }}
+          BUILD_ID: ${{ steps.build_info.outputs.BUILD_ID }}
+          APK_FILE_ID: ${{ steps.upload.outputs.APK_FILE_ID }}
+          AAB_FILE_ID: ${{ steps.upload.outputs.AAB_FILE_ID }}
+          APK_URL: ${{ steps.upload.outputs.APK_URL }}
+          BUILD_NUMBER: ${{ steps.build_info.outputs.BUILD_NUMBER }}
         run: |
-          curl -X POST "${{ steps.build_info.outputs.CALLBACK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "build_id": "${{ steps.build_info.outputs.BUILD_ID }}",
-              "status": "success",
-              "apk_file_id": "${{ steps.upload.outputs.APK_FILE_ID }}",
-              "aab_file_id": "${{ steps.upload.outputs.AAB_FILE_ID }}",
-              "apk_url": "${{ steps.upload.outputs.APK_URL }}",
-              "build_number": "${{ steps.build_info.outputs.BUILD_NUMBER }}"
-            }'
+          export CALLBACK_URL="$(printf '%s' "$CALLBACK_URL_B64" | base64 -d)"
+          export CALLBACK_PAYLOAD="$(node -e 'process.stdout.write(JSON.stringify({build_id: process.env.BUILD_ID, status: "success", apk_file_id: process.env.APK_FILE_ID || "", aab_file_id: process.env.AAB_FILE_ID || "", apk_url: process.env.APK_URL || "", build_number: process.env.BUILD_NUMBER}))')"
+          node build-service/cli/security.js callback
 
       - name: Notify Build Orchestrator
-        if: steps.build_info.outputs.STORE_CALLBACK_URL != ''
+        if: steps.build_info.outputs.STORE_CALLBACK_URL_B64 != ''
         env:
+          APPWRITE_ENDPOINT: ${{ secrets.APPWRITE_ENDPOINT }}
+          APPWRITE_PROJECT_ID: ${{ secrets.APPWRITE_PROJECT_ID }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+          APPWRITE_BUCKET_ID: ${{ secrets.APPWRITE_BUCKET_ID }}
           APK_PATH: ${{ steps.upload.outputs.APK_FILE_ID }}
           BUILD_NUM: ${{ steps.build_info.outputs.BUILD_NUMBER }}
+          CALLBACK_URL_B64: ${{ steps.build_info.outputs.STORE_CALLBACK_URL_B64 }}
+          CALLBACK_ALLOWED_HOSTS: ${{ secrets.CALLBACK_ALLOWED_HOSTS }}
+          CALLBACK_SIGNING_SECRET: ${{ secrets.CALLBACK_SIGNING_SECRET }}
         run: |
+          export CALLBACK_URL="$(printf '%s' "$CALLBACK_URL_B64" | base64 -d)"
           APK_FILE_ID="${{ steps.upload.outputs.APK_FILE_ID }}"
           APK_URL=""
           FILE_SIZE=0
           
           # Find the actual APK file to get its size
           if [ -n "$APK_FILE_ID" ]; then
-            APK_URL="https://fra.cloud.appwrite.io/v1/storage/buckets/${{ secrets.APPWRITE_BUCKET_ID }}/files/${APK_FILE_ID}/download?project=${{ secrets.APPWRITE_PROJECT_ID }}"
+            APK_URL="$(APPWRITE_ENDPOINT="$APPWRITE_ENDPOINT" APPWRITE_BUCKET_ID="$APPWRITE_BUCKET_ID" SOURCE_FILE_ID="$APK_FILE_ID" node build-service/cli/security.js source-url)?project=${APPWRITE_PROJECT_ID}"
             # Try to get file info via Appwrite API
             FILE_INFO=$(curl -s \
-              -H "X-Appwrite-Project: ${{ secrets.APPWRITE_PROJECT_ID }}" \
-              -H "X-Appwrite-Key: ${{ secrets.APPWRITE_API_KEY }}" \
-              "https://fra.cloud.appwrite.io/v1/storage/buckets/${{ secrets.APPWRITE_BUCKET_ID }}/files/${APK_FILE_ID}")
+              --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 \
+              -H "X-Appwrite-Project: $APPWRITE_PROJECT_ID" \
+              -H "X-Appwrite-Key: $APPWRITE_API_KEY" \
+              "${APPWRITE_ENDPOINT}/storage/buckets/${APPWRITE_BUCKET_ID}/files/${APK_FILE_ID}")
             FILE_SIZE=$(echo "$FILE_INFO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sizeOriginal', 0))" 2>/dev/null || echo "0")
           fi
           
@@ -433,16 +557,8 @@ jobs:
             ERROR_MSG="No APK file was produced"
           fi
           
-          curl -X POST "${{ steps.build_info.outputs.STORE_CALLBACK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"status\": \"${STATUS}\",
-              \"apk_file_id\": \"${APK_FILE_ID}\",
-              \"apk_file_url\": \"${APK_URL}\",
-              \"file_size\": ${FILE_SIZE},
-              \"build_number\": ${{ steps.build_info.outputs.BUILD_NUMBER }},
-              \"error_message\": \"${ERROR_MSG}\"
-            }"
+          export CALLBACK_PAYLOAD="$(STATUS="$STATUS" APK_FILE_ID="$APK_FILE_ID" APK_URL="$APK_URL" FILE_SIZE="$FILE_SIZE" BUILD_NUM="$BUILD_NUM" ERROR_MSG="$ERROR_MSG" node -e 'process.stdout.write(JSON.stringify({status: process.env.STATUS, apk_file_id: process.env.APK_FILE_ID || "", apk_file_url: process.env.APK_URL || "", file_size: Number(process.env.FILE_SIZE || 0), build_number: process.env.BUILD_NUM, error_message: process.env.ERROR_MSG || ""}))')"
+          node build-service/cli/security.js callback
 
       - name: Upload artifacts to GitHub
         uses: actions/upload-artifact@v4

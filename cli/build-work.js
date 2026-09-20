@@ -16,6 +16,7 @@ const path = require('path');
 const sdk = require('node-appwrite');
 const archiver = require('archiver');
 const os = require('os');
+const crypto = require('crypto');
 
 // Extract SDK components
 const { Client, Storage, ID, InputFile } = sdk;
@@ -234,14 +235,22 @@ function detectProjectType(projectPath) {
   return 'auto';
 }
 
-async function triggerBuild(sourceUrl, buildConfig, settings, projectType) {
+async function triggerBuild(sourceFileId, buildConfig, settings, projectType) {
   const buildId = Date.now().toString();
+  const teamId = settings.buildTeam || 'default-team';
+  const projectId = settings.buildProject || settings.githubRepo || 'default-project';
+  const dedupKey = crypto.createHash('sha256')
+    .update(JSON.stringify({ sourceFileId, profile: buildConfig.variant, projectType, teamId, projectId }))
+    .digest('hex');
   
   const payload = {
     event_type: 'remote-build',
     client_payload: {
-      source_url: sourceUrl,
+      source_file_id: sourceFileId,
       build_id: buildId,
+      team_id: teamId,
+      project_id: projectId,
+      dedup_key: dedupKey,
       platform: 'android',
       variant: buildConfig.variant,
       project_type: projectType,
@@ -340,10 +349,8 @@ async function build(options) {
 
     // Upload to Appwrite
     const file = await uploadToAppwrite(packagePath, settings);
-    const sourceUrl = `${settings.appwriteEndpoint}/storage/buckets/${settings.appwriteBucket}/files/${file.$id}/download`;
-
     // Trigger build
-    const buildId = await triggerBuild(sourceUrl, buildConfig, settings, projectType);
+    const buildId = await triggerBuild(file.$id, buildConfig, settings, projectType);
 
     // Cleanup
     fs.unlinkSync(packagePath);

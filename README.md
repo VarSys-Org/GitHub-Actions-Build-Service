@@ -84,7 +84,8 @@ before sending proprietary or secret files to Appwrite.
 ## Workflow contract
 
 The worker is triggered by `repository_dispatch` type `remote-build` or by
-`workflow_dispatch`. It can receive a source archive URL, a repository to
+`workflow_dispatch`. It can receive an Appwrite source file ID, a legacy source
+archive URL (which is validated and converted to a file ID), a repository to
 checkout, build ID, callback URLs, project type, variant, build channel, and
 Flutter version. It defaults missing project type to `auto`, missing variant to
 `release` in the workflow, and missing build channel to `staging`.
@@ -97,11 +98,17 @@ The workflow:
 4. Detects Flutter, Capacitor, Expo, or an existing `android/` directory.
 5. Builds APK/AAB artifacts with Gradle or Flutter.
 6. Uploads artifacts to Appwrite Storage and GitHub Actions.
-7. Sends optional callbacks and retains GitHub artifacts for 7 days.
+7. Sends optional allowlisted, HMAC-signed callbacks and retains GitHub
+   artifacts for 7 days.
 
 Required repository secrets referenced by the workflow include
 `APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`, `APPWRITE_API_KEY`,
-`APPWRITE_BUCKET_ID`, and, for repository checkout, `GH_PAT`. Project-specific
+`APPWRITE_BUCKET_ID`, and, for repository checkout, `GH_PAT`. Secure callback
+delivery requires `CALLBACK_ALLOWED_HOSTS` and `CALLBACK_SIGNING_SECRET`.
+Admission control requires `BUILD_ALLOWED_TEAMS`, `BUILD_ALLOWED_PROJECTS`,
+`BUILD_MAX_TEAM_CONCURRENCY` (default `2`), and
+`BUILD_MAX_PROJECT_CONCURRENCY` (default `1`). Values in the allowlists are
+comma-separated IDs and must match the dispatch payload. Project-specific
 environment values are also mapped by the workflow and must be reviewed before
 use. GitHub masks secrets, but logs and callback payloads can still leak other
 sensitive values if scripts print them.
@@ -126,7 +133,9 @@ Do not run a production release merely as a syntax check.
   environment files.
 - Do not upload secrets inside source archives; the workflow creates a project
   `.env` from configured Actions secrets.
-- Treat callback URLs and source URLs as untrusted inputs and review the target
-  repository/bucket before dispatch.
+- Treat callback URLs and source URLs as untrusted inputs. Source downloads are
+  rebuilt from the configured Appwrite endpoint, bucket, and validated file ID;
+  callbacks must resolve to an allowlisted public HTTPS host and include the
+  `X-Build-Signature` HMAC header.
 - Android signing keys must remain in GitHub Secrets or an approved secret
   store. Confirm version code and build variant before publishing to the Store.

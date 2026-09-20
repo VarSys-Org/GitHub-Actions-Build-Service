@@ -50,7 +50,24 @@ build-service build --profile development
 build-service build --profile production
 ```
 
-## 6. Check Results
+## 6. Configure workflow security
+
+Add these repository secrets before accepting remote dispatches:
+
+- `CALLBACK_ALLOWED_HOSTS`: comma-separated callback hostnames.
+- `CALLBACK_SIGNING_SECRET`: at least 32 random characters.
+- `BUILD_ALLOWED_TEAMS`: comma-separated approved team IDs.
+- `BUILD_ALLOWED_PROJECTS`: comma-separated approved project IDs.
+- `BUILD_MAX_TEAM_CONCURRENCY`: optional positive integer, default `2`.
+- `BUILD_MAX_PROJECT_CONCURRENCY`: optional positive integer, default `1`.
+
+Callbacks must verify `X-Build-Signature: sha256=<hex>` over
+`<timestamp>.<raw JSON body>` using `X-Build-Signature-Timestamp` and the shared
+signing secret. The source archive should be sent as `source_file_id`; legacy
+`source_url` values are accepted only when they point to the configured
+Appwrite project and bucket.
+
+## 7. Check Results
 
 - **GitHub Actions**: https://github.com/YOUR_USERNAME/GitHub-Actions-Build-Service/actions
 - **Appwrite Storage**: Your Appwrite console → Storage → Your Bucket
