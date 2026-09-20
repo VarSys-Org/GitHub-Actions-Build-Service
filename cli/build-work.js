@@ -26,7 +26,7 @@ const SETTINGS_FILE = path.join(os.homedir(), '.build-service.json');
 // Read configuration
 function loadSettings() {
   if (!fs.existsSync(SETTINGS_FILE)) {
-    console.error('❌ Configuration not found. Run: build-service configure');
+    console.error('[error] Configuration not found. Run: build-service configure');
     process.exit(1);
   }
   return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
@@ -36,16 +36,16 @@ function loadSettings() {
 function loadEasSettings(projectPath) {
   const easJsonPath = path.join(projectPath, 'eas.json');
   if (!fs.existsSync(easJsonPath)) {
-    console.log('⚠️  eas.json not found. Using default configuration.');
+    console.log('[warn]  eas.json not found. Using default configuration.');
     return null;
   }
   
   try {
     const easConfig = JSON.parse(fs.readFileSync(easJsonPath, 'utf8'));
-    console.log('✅ Loaded eas.json configuration');
+    console.log('[ok] Loaded eas.json configuration');
     return easConfig;
   } catch (error) {
-    console.error('❌ Failed to parse eas.json:', error.message);
+    console.error('[error] Failed to parse eas.json:', error.message);
     return null;
   }
 }
@@ -62,14 +62,14 @@ function mapProfileToSettings(profile, profileConfig) {
   };
 
   if (!profileConfig) {
-    console.log(`⚠️  Profile "${profile}" not found in eas.json, using defaults`);
+    console.log(`[warn]  Profile "${profile}" not found in eas.json, using defaults`);
     return settings;
   }
 
   // Map developmentClient to debug variant
   if (profileConfig.developmentClient === true) {
     settings.variant = 'debug';
-    console.log('📱 Development client enabled → using debug variant');
+    console.log('[mobile] Development client enabled → using debug variant');
   }
 
   // Map distribution type
@@ -81,25 +81,25 @@ function mapProfileToSettings(profile, profileConfig) {
   if (profileConfig.android) {
     if (profileConfig.android.buildType) {
       settings.buildType = profileConfig.android.buildType; // 'apk' or 'aab'
-      console.log(`📦 Build type: ${settings.buildType.toUpperCase()}`);
+      console.log(`[package] Build type: ${settings.buildType.toUpperCase()}`);
     }
     
     if (profileConfig.android.gradleCommand) {
       settings.gradleCommand = profileConfig.android.gradleCommand;
-      console.log(`⚙️  Custom gradle command: ${settings.gradleCommand}`);
+      console.log(`[config]  Custom gradle command: ${settings.gradleCommand}`);
     }
   }
 
   // Map environment variables
   if (profileConfig.env) {
     settings.env = profileConfig.env;
-    console.log(`🔧 Environment variables: ${Object.keys(settings.env).length} variables`);
+    console.log(`[tool] Environment variables: ${Object.keys(settings.env).length} variables`);
   }
 
   // Map autoIncrement
   if (profileConfig.autoIncrement === true) {
     settings.autoIncrement = true;
-    console.log('🔢 Auto-increment version code enabled');
+    console.log('[number] Auto-increment version code enabled');
   }
 
   return settings;
@@ -133,7 +133,7 @@ async function packageProject(projectPath, excludePatterns = [], options = {}) {
 
     output.on('close', () => {
       const sizeInMB = (archive.pointer() / 1024 / 1024).toFixed(2);
-      console.log(`📦 Package created: ${sizeInMB} MB`);
+      console.log(`[package] Package created: ${sizeInMB} MB`);
       resolve(outputPath);
     });
 
@@ -150,7 +150,7 @@ async function packageProject(projectPath, excludePatterns = [], options = {}) {
         .map(line => line.trim())
         .filter(line => line && !line.startsWith('#'))
         .map(line => line.endsWith('/') ? line + '**' : line);
-      console.log(`📋 Using .buildignore (${buildIgnorePatterns.length} patterns)`);
+      console.log(`[list] Using .buildignore (${buildIgnorePatterns.length} patterns)`);
     }
 
     // Default excludes if no .buildignore
@@ -176,7 +176,7 @@ async function packageProject(projectPath, excludePatterns = [], options = {}) {
 
     const allExcludes = [...computedDefaultExcludes, ...excludePatterns];
 
-    console.log('📁 Packaging project...');
+    console.log('[folder] Packaging project...');
     archive.glob('**/*', {
       cwd: projectPath,
       ignore: allExcludes,
@@ -196,7 +196,7 @@ async function uploadToAppwrite(filePath, settings) {
 
   const storage = new Storage(client);
 
-  console.log('📤 Uploading to Appwrite Storage...');
+  console.log('[upload] Uploading to Appwrite Storage...');
   
   // Read file and create buffer
   const fileBuffer = fs.readFileSync(filePath);
@@ -208,7 +208,7 @@ async function uploadToAppwrite(filePath, settings) {
     InputFile.fromBuffer(fileBuffer, fileName)
   );
 
-  console.log(`✅ Uploaded: ${file.$id}`);
+  console.log(`[ok] Uploaded: ${file.$id}`);
   return file;
 }
 
@@ -252,11 +252,11 @@ async function triggerBuild(sourceUrl, buildConfig, settings, projectType) {
     }
   };
 
-  console.log('\n🚀 Triggering GitHub Actions build...');
-  console.log(`📋 Build ID: ${buildId}`);
-  console.log(`📦 Variant: ${buildConfig.variant}`);
-  console.log(`⚙️  Gradle: ${payload.client_payload.gradle_command}`);
-  console.log(`📦 Output: ${buildConfig.buildType.toUpperCase()}`);
+  console.log('\n[start] Triggering GitHub Actions build...');
+  console.log(`[list] Build ID: ${buildId}`);
+  console.log(`[package] Variant: ${buildConfig.variant}`);
+  console.log(`[config]  Gradle: ${payload.client_payload.gradle_command}`);
+  console.log(`[package] Output: ${buildConfig.buildType.toUpperCase()}`);
 
   const response = await fetch(
     `https://api.github.com/repos/${settings.githubRepo}/dispatches`,
@@ -275,8 +275,8 @@ async function triggerBuild(sourceUrl, buildConfig, settings, projectType) {
     throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
   }
 
-  console.log('✅ Build triggered successfully');
-  console.log(`🔗 Monitor: https://github.com/${settings.githubRepo}/actions`);
+  console.log('[ok] Build triggered successfully');
+  console.log(`[link] Monitor: https://github.com/${settings.githubRepo}/actions`);
   
   return buildId;
 }
@@ -287,9 +287,9 @@ async function build(options) {
     const projectPath = options.path || process.cwd();
     const profile = options.profile || 'production';
     
-    console.log('\n🏗️  Enhanced Build Service (EAS-Compatible)\n');
-    console.log(`📂 Project: ${projectPath}`);
-    console.log(`🎯 Profile: ${profile}`);
+    console.log('\n[build]  Enhanced Build Service (EAS-Compatible)\n');
+    console.log(`[folder] Project: ${projectPath}`);
+    console.log(`[target] Profile: ${profile}`);
     console.log('');
 
     // Load configurations
@@ -313,7 +313,7 @@ async function build(options) {
       }
     }
 
-    console.log(`🧭 Project type: ${projectType}`);
+    console.log(`[map] Project type: ${projectType}`);
 
     const debugAabNeedsFix = projectType === 'flutter' && buildConfig.variant === 'debug';
     let placeholderAabPath = null;
@@ -323,7 +323,7 @@ async function build(options) {
       placeholderAabPath = path.join(placeholderDir, 'placeholder-debug.aab');
       fs.mkdirSync(placeholderDir, { recursive: true });
       fs.writeFileSync(placeholderAabPath, 'placeholder-aab-for-debug-workflow-compatibility');
-      console.log('🩹 Applied debug artifact workaround for current remote workflow (temporary placeholder AAB).');
+      console.log('[fix] Applied debug artifact workaround for current remote workflow (temporary placeholder AAB).');
     }
 
     // Package project
@@ -348,19 +348,19 @@ async function build(options) {
     // Cleanup
     fs.unlinkSync(packagePath);
 
-    console.log('\n✨ Done!\n');
-    console.log('📋 Build Information:');
+    console.log('\n[highlight] Done!\n');
+    console.log('[list] Build Information:');
     console.log(`   Build ID: ${buildId}`);
     console.log(`   File ID: ${file.$id}`);
     console.log(`   Profile: ${profile}`);
     console.log(`   Variant: ${buildConfig.variant}`);
     console.log(`   Output: ${buildConfig.buildType.toUpperCase()}`);
     console.log('');
-    console.log('⏳ Build typically takes 15-25 minutes');
-    console.log(`🔗 Monitor at: https://github.com/${settings.githubRepo}/actions`);
+    console.log('[wait] Build typically takes 15-25 minutes');
+    console.log(`[link] Monitor at: https://github.com/${settings.githubRepo}/actions`);
 
   } catch (error) {
-    console.error('\n❌ Build failed:', error.message);
+    console.error('\n[error] Build failed:', error.message);
     process.exit(1);
   }
 }
