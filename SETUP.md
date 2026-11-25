@@ -7,7 +7,7 @@
 3. Give it a name: "Build Service CLI"
 4. Select scopes: **`repo`** (all repo permissions)
 5. Click "Generate token"
-6. **Copy the token** (you won't see it again!)
+6. **Copy the token.** GitHub displays it only once.
 
 ## 2. Get Appwrite Credentials
 
@@ -103,4 +103,4 @@ The first build will:
 - Set up Android SDK
 - Takes ~5-10 minutes
 
-Subsequent builds are faster with caching!
+Caching can shorten later builds.

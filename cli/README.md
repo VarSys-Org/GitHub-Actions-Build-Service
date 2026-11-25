@@ -1,17 +1,16 @@
 # Remote Build Service CLI
 
-A CLI tool to build Expo/React Native apps remotely using GitHub Actions - EAS-compatible profiles, self-hosted, and unlimited!
+Build Expo and React Native apps remotely with GitHub Actions. The CLI reads EAS build profiles and uploads source archives to Appwrite Storage.
 
-## 🚀 Features
+## Features
 
-- ✅ **EAS Profile Support** - Reads eas.json build profiles (development, preview, production)
-- ✅ Build from anywhere (local machine, CI, etc.)
-- ✅ Unlimited builds (free GitHub Actions)
-- ✅ Automatic APK/AAB generation
-- ✅ Uploads to Appwrite Storage
-- ✅ Simple CLI interface
+- **EAS profile support:** Reads `eas.json` build profiles for development, preview, and production.
+- Run builds from a local machine or CI.
+- Generate APK and AAB artifacts.
+- Upload source archives and build artifacts to Appwrite Storage.
+- Configure the service, start builds, and check build status from the CLI.
 
-## 📋 Prerequisites
+## Prerequisites
 
 1. **GitHub Personal Access Token**
    - Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
@@ -23,7 +22,7 @@ A CLI tool to build Expo/React Native apps remotely using GitHub Actions - EAS-c
    - Get your API key with storage permissions
    - Note your endpoint, project ID, and bucket ID
 
-## 🔧 Installation
+## Installation
 
 ### Option 1: Install Globally (Recommended)
 
@@ -32,7 +31,7 @@ cd cli
 npm install -g .
 ```
 
-Now you can use `build-service` from anywhere!
+The global `build-service` command is available from any directory.
 
 ### Option 2: Use Locally
 
@@ -42,7 +41,7 @@ npm install
 npm link
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 Run the configure command to set up your credentials:
 
@@ -64,7 +63,7 @@ Configuration is saved to `~/.build-service.json`
 build-service config
 ```
 
-## 📱 Usage
+## Usage
 
 ### Build Your Project
 
@@ -89,7 +88,7 @@ build-service status <build-id>
 
 Or visit GitHub Actions: `https://github.com/owner/repo/actions`
 
-## 🔄 How It Works
+## How It Works
 
 ```
 ┌─────────────┐
@@ -122,7 +121,7 @@ Or visit GitHub Actions: `https://github.com/owner/repo/actions`
 4. GitHub Actions downloads, builds, and uploads APK/AAB
 5. You download the built APK from Appwrite or GitHub Artifacts
 
-## 🎯 Example Workflow
+## Example Workflow
 
 ```bash
 # One-time setup
@@ -134,22 +133,22 @@ build-service configure \
   --github-token ghp_abc...xyz \
   --github-repo mycompany/build-service
 
-# Daily usage - just run from your project
+# Run from your project
 cd my-expo-app
 build-service build
 
 # Output:
-# 📦 Packaging project...
-# 📊 Archive size: 2.45 MB
-# ☁️  Uploading to Appwrite...
-# ✅ Uploaded: 507f1f77bcf86cd799439011
-# 🚀 Triggering build...
-# ✅ Build started!
-# 🔗 Build ID: 1735689600000
-# 🔗 GitHub Actions: https://github.com/mycompany/build-service/actions
+# Packaging project...
+# Archive size: 2.45 MB
+# Uploading to Appwrite...
+# Uploaded: 507f1f77bcf86cd799439011
+# Triggering build...
+# Build started.
+# Build ID: 1735689600000
+# GitHub Actions: https://github.com/mycompany/build-service/actions
 ```
 
-## 📥 Downloading Your APK
+## Downloading Your APK
 
 ### Method 1: Appwrite Storage Dashboard
 1. Go to your Appwrite console
@@ -168,14 +167,14 @@ build-service build
 curl "https://cloud.appwrite.io/v1/storage/buckets/BUCKET_ID/files/FILE_ID/download?project=PROJECT_ID"
 ```
 
-## 🔐 Security Notes
+## Security Notes
 
 - Configuration file (`~/.build-service.json`) contains sensitive tokens
 - Keep your GitHub token and Appwrite API key secure
 - Don't commit `.build-service.json` to version control
 - Consider using environment variables in production
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### "Missing configuration"
 Run `build-service configure` with all required options
@@ -195,7 +194,7 @@ The CLI excludes `node_modules`, `android`, `ios` folders. If still large:
 - For private repos, token must have access
 - Regenerate token if expired
 
-## 📝 Commands Reference
+## Commands Reference
 
 | Command | Description |
 |---------|-------------|
@@ -206,21 +205,21 @@ The CLI excludes `node_modules`, `android`, `ios` folders. If still large:
 | `build-service config` | Show current config |
 | `build-service --help` | Show help |
 
-## 🎉 Comparison with EAS
+## Comparison with EAS
 
 | Feature | EAS | Build Service |
 |---------|-----|---------------|
 | Free builds/month | 30 | ∞ Unlimited |
-| Build from anywhere | ✅ | ✅ |
-| CLI tool | ✅ | ✅ |
-| Self-hosted | ❌ | ✅ |
+| Build from anywhere | Yes | Yes |
+| CLI tool | Yes | Yes |
+| Self-hosted | No | Yes |
 | Setup complexity | Easy | Medium |
 | Cost (production) | $99/mo | Free |
 
-## 🤝 Contributing
+## Contributing
 
-Want to improve the build service? PRs welcome!
+Contributions are welcome.
 
-## 📄 License
+## License
 
 MIT

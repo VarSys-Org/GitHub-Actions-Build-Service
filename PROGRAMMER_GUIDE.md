@@ -27,7 +27,7 @@ build-service build --profile development
 # Production build
 build-service build --profile production
 
-# Done! Check GitHub Actions for build status
+# Check GitHub Actions for build status
 ```
 
 ## Architecture Overview
@@ -160,15 +160,17 @@ build-service build --platform android  # Default
 build-service build --wait              # Wait for completion (WIP)
 ```
 
-**What gets packaged:**
-- ✅ Source code
-- ✅ package.json, package-lock.json
-- ✅ app.json / app.config.js
-- ✅ assets/
-- ❌ node_modules/
-- ❌ android/, ios/
-- ❌ .git/
-- ❌ .expo/
+**Included in the package:**
+- Source code
+- `package.json` and `package-lock.json`
+- `app.json` or `app.config.js`
+- `assets/`
+
+**Excluded from the package:**
+- `node_modules/`
+- `android/` and `ios/`
+- `.git/`
+- `.expo/`
 
 **Returns:**
 ```javascript
@@ -587,7 +589,7 @@ build-service build
 
 #### Build Matrix (Multiple Variants at Once)
 
-Want to build all variants in one go? Update workflow:
+To build all variants together, add a matrix to the workflow:
 
 ```yaml
 strategy:
@@ -608,7 +610,7 @@ Artifacts are now named with the variant:
 - `build-{buildId}-{timestamp}-preview.apk`
 - `build-{buildId}-{timestamp}-release.apk`
 
-This makes it easy to identify which build is which!
+The filename suffix identifies the build variant.
 
 ### App Signing
 
@@ -895,7 +897,7 @@ Add to workflow:
 ### GitHub Actions
 
 **Free Tier (Public Repos):**
-- Unlimited minutes ✅
+- Unlimited minutes
 
 **Free Tier (Private Repos):**
 - 2,000 minutes/month
@@ -1040,7 +1042,7 @@ gh run view RUN_ID --log --repo username/repo
 
 ---
 
-**Need help?** Open an issue on GitHub or check the troubleshooting section below.
+For help, open a GitHub issue or check the troubleshooting section below.
 
 ---
 
@@ -1056,9 +1058,9 @@ e: [ksp] java.lang.OutOfMemoryError: Metaspace
 
 **Cause:** Insufficient metaspace memory for Kotlin Symbol Processing (KSP) in expo-updates and other modules.
 
-**Solution (Updated February 9, 2026 - MAXIMUM SAFE LIMITS):**
+**Solution (Updated February 9, 2026):**
 
-The GitHub Actions workflow has been updated with **maximum safe memory allocation** to future-proof against all project sizes:
+The GitHub Actions workflow sets these JVM memory options to address KSP metaspace failures:
 
 ```yaml
 # In .github/workflows/remote-build.yml
@@ -1069,9 +1071,9 @@ env:
 
 **Why These Limits:**
 - GitHub Actions ubuntu-latest runners have 7GB RAM total
-- 7GB heap + 3GB metaspace = maximum safe allocation
-- Future-proofed for projects with 100+ dependencies
-- Handles large KSP generation, multi-module builds, extensive analysis
+- Heap cap: 7GB; metaspace cap: 3GB
+- Intended for projects with 100+ dependencies
+- Supports large KSP generation, multi-module builds, and extensive analysis
 
 **For Project Developers:**
 
@@ -1092,7 +1094,7 @@ env:
    - Consider modularizing your project
    - Or use self-hosted runners with more RAM
 
-**Important:** The issue is NOT with the GitHub-hosted runner (ubuntu-latest has sufficient resources). It's a JVM memory configuration issue that affects Kotlin compilation.
+The guide attributes this error to JVM memory settings used during Kotlin compilation. It describes the GitHub-hosted `ubuntu-latest` runner as having sufficient resources.
 
 ### Build Takes Too Long (>30 minutes)
 
@@ -1102,7 +1104,7 @@ env:
 - Complex build configurations
 
 **Solutions:**
-1. ✅ GitHub Actions caches are configured (Gradle, npm, Android SDK)
+1. GitHub Actions caches are configured for Gradle, npm, and the Android SDK.
 2. Enable parallel builds in `gradle.properties` (already in template)
 3. Reduce dependencies if possible
 4. Use development builds (faster than production)
