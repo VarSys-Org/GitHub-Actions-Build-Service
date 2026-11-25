@@ -228,6 +228,7 @@ jobs:
           path: project
           ref: main
           token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
 
       - name: Download source code (from Appwrite)
         if: steps.build_info.outputs.SOURCE_URL != '' || steps.build_info.outputs.SOURCE_FILE_ID != ''

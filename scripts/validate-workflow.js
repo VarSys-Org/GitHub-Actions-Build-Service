@@ -12,6 +12,7 @@ assert.match(workflow, /BUILD_ALLOWED_TEAMS/);
 assert.match(workflow, /BUILD_ALLOWED_PROJECTS/);
 assert.match(workflow, /node build-service\/cli\/security\.js source-url/);
 assert.match(workflow, /node build-service\/cli\/security\.js callback/);
+assert.match(workflow, /repository: \$\{\{ steps\.build_info\.outputs\.REPO \}\}[\s\S]*?token: \$\{\{ secrets\.GH_PAT \}\}[\s\S]*?persist-credentials: false/);
 assert.doesNotMatch(workflow, /curl[^\n]*\$\{\{ steps\.build_info\.outputs\.SOURCE_URL \}\}/);
 assert.doesNotMatch(workflow, /-H "X-Appwrite-Key: \$\{\{/);
 assert.doesNotMatch(workflow, /"\$\{\{ steps\.build_info\.outputs\.SOURCE_URL \}\}"/);
